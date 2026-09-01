@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -13,3 +15,29 @@ class ChatResponse(BaseModel):
     retry_count: int
     documents_relevant: bool
     grounded: bool
+
+
+class ChatSessionResponse(BaseModel):
+    id: int
+    title: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ChatMessageResponse(BaseModel):
+    id: int
+    session_id: int
+    role: str
+    content: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ChatSessionDetailResponse(BaseModel):
+    session: ChatSessionResponse
+    messages: list[ChatMessageResponse]
