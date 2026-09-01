@@ -9,6 +9,8 @@ class DocumentResponse(BaseModel):
     file_name: str
     file_path: str
     status: str
+    page_count: int
+    chunk_count: int
     uploaded_at: datetime
 
     class Config:

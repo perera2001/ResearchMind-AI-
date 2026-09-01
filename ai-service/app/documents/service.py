@@ -69,6 +69,8 @@ def save_uploaded_pdf(
 
     vector_store.add_chunks(chunks)
     bm25_store.add_chunks(chunks)
+    document.page_count=len(pages)
+    document.chunk_count=len(chunks)
 
     document.status = "processed"
 

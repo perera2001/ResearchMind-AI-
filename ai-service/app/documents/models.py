@@ -35,6 +35,16 @@ class Document(Base):
         default="uploaded",
     )
 
+    page_count = Column(
+        Integer,
+        default=0,
+    )
+
+    chunk_count = Column(
+        Integer,
+        default=0,
+    )
+
     uploaded_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),
