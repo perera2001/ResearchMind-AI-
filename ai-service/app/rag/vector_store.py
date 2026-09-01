@@ -52,7 +52,9 @@ class VectorStore:
         user_id: int,
         top_k: int,
     ) -> list[dict]:
-        query_embedding = self.embeddings.embed_query(query)
+        query_embedding = self.embeddings.embed_query(
+            query,
+        )
 
         results = self.collection.query(
             query_embeddings=[query_embedding],
@@ -82,6 +84,43 @@ class VectorStore:
             )
 
         return retrieved
+
+    def get_user_page_chunks(
+        self,
+        user_id: int,
+        page_number: int = 1,
+    ) -> list[dict]:
+        results = self.collection.get(
+            where={
+                "$and": [
+                    {
+                        "user_id": user_id,
+                    },
+                    {
+                        "page_number": page_number,
+                    },
+                ]
+            }
+        )
+
+        documents = results.get("documents", [])
+        metadatas = results.get("metadatas", [])
+
+        chunks = []
+
+        for document, metadata in zip(
+            documents,
+            metadatas,
+        ):
+            chunks.append(
+                {
+                    "content": document,
+                    "metadata": metadata,
+                    "score": 1.0,
+                }
+            )
+
+        return chunks
 
 
 vector_store = VectorStore()

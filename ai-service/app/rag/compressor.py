@@ -18,17 +18,20 @@ def compress_documents(
 
     for document in documents[:6]:
         prompt = f"""
-Keep only the sentences from this research paper chunk
-that are useful for answering the question.
+Extract the useful evidence from this research paper chunk.
+
+Rules:
+- Keep complete sentences only.
+- Do not start from the middle of a sentence.
+- Do not rewrite as an answer.
+- Only keep evidence useful for the question.
+- If nothing is useful, return EMPTY.
 
 Question:
 {question}
 
 Chunk:
 {document["content"]}
-
-Return only the useful text.
-If nothing is useful, return EMPTY.
 """
 
         response = llm.invoke(prompt)

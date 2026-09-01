@@ -20,3 +20,21 @@ def load_pdf_pages(file_path: str) -> list[dict]:
     pdf_document.close()
 
     return pages
+def load_single_pdf_page(
+    file_path: str,
+    page_number: int,
+) -> str:
+    pdf_document = fitz.open(file_path)
+
+    page_index = page_number - 1
+
+    if page_index < 0 or page_index >= len(pdf_document):
+        pdf_document.close()
+        return ""
+
+    page = pdf_document[page_index]
+    text = page.get_text()
+
+    pdf_document.close()
+
+    return text
