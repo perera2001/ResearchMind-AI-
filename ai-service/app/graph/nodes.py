@@ -7,6 +7,7 @@ from app.agent.schemas import (
     RelevanceGrade,
     RouteDecision,
 )
+from app.agent.research_agent import run_research_agent
 from app.agent.tools import search_research_papers
 from app.config import settings
 
@@ -260,89 +261,56 @@ Documents:
 
 
 def generate_answer_node(state: dict) -> dict:
-    question = state["question"].lower()
-
-    context = "\n\n".join(
-        [
-            f'Source: {document["source"]}, Page: {document["page_number"]}\n{document["content"]}'
-            for document in state["documents"][:5]
-        ]
+    answer, tool_documents = run_research_agent(
+        question=state["question"],
+        user_id=state["user_id"],
+        chat_history=state["chat_history"],
+        documents=state["documents"],
     )
 
-    if (
-        "author" in question
-        or "authors" in question
-        or "who wrote" in question
-        or "written by" in question
-    ):
-        response = llm.invoke(
-            f"""
-You are ResearchMind AI.
+    documents = []
+    seen_documents = set()
 
-The user is asking for the authors of the research paper.
-
-Use only the raw first page text below.
-
-Rules:
-- Extract every author name exactly as written.
-- Do not shorten initials.
-- Do not include emails.
-- Do not include department names.
-- Do not include university names.
-- Do not answer a previous question.
-- Return only this format:
-The authors are: author 1, author 2, author 3.
-
-Question:
-{state["question"]}
-
-Raw first page text:
-{context}
-"""
+    for document in state["documents"] + tool_documents:
+        key = (
+            document["source"],
+            document["page_number"],
+            document["document_id"],
+            document["content"][:100],
         )
 
-        return {
-            "answer": response.content,
-        }
+        if key in seen_documents:
+            continue
 
-    chat_history_text = "\n".join(
-        [
-            f'{message["role"]}: {message["content"]}'
-            for message in state["chat_history"][-6:]
-        ]
-    )
+        seen_documents.add(key)
+        documents.append(document)
 
-    response = llm.invoke(
-        f"""
-You are ResearchMind AI.
+    sources = []
+    seen_sources = set()
 
-Answer using only the provided research paper context.
+    for document in documents:
+        key = (
+            document["source"],
+            document["page_number"],
+            document["document_id"],
+        )
 
-Rules:
-- Answer only the current question.
-- Do not answer previous questions from chat history.
-- Do not include authors unless the user asks for authors.
-- Identify the central research problem only if the user asks about the problem.
-- Prefer problem statements, abstract, introduction, and motivation evidence.
-- Start with a complete sentence.
-- Give a clear direct answer.
-- If the context contains multiple possible answers, mention the most important one first.
-- If the context does not contain enough evidence, say you cannot find enough evidence.
-- Keep the answer short but meaningful.
+        if key in seen_sources:
+            continue
 
-Chat history is only for understanding follow-up questions:
-{chat_history_text}
-
-Current question:
-{state["question"]}
-
-Research paper context:
-{context}
-"""
-    )
+        seen_sources.add(key)
+        sources.append(
+            {
+                "source": document["source"],
+                "page_number": document["page_number"],
+                "document_id": document["document_id"],
+            }
+        )
 
     return {
-        "answer": response.content,
+        "answer": answer,
+        "documents": documents,
+        "sources": sources,
     }
 def check_groundedness_node(state: dict) -> dict:
     question = state["question"].lower()
