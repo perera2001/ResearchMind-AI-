@@ -1,100 +1,63 @@
-import os
-import shutil
-from uuid import uuid4
+from typing import List
 
-from fastapi import HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.orm import Session
 
-from app.config import settings
-from app.documents.models import Document
+from app.auth.dependencies import get_current_user
+from app.auth.models import User
+from app.database import get_db
+from app.documents.schemas import DocumentResponse
+from app.documents.service import (
+    delete_user_document,
+    get_user_documents,
+    save_uploaded_pdf,
+)
 
 
-def save_uploaded_pdf(
-    file: UploadFile,
-    user_id: int,
-    db: Session,
-) -> Document:
-    if not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only PDF files are allowed",
-        )
-
-    user_folder = os.path.join(
-        settings.pdf_upload_path,
-        str(user_id),
-    )
-
-    os.makedirs(
-        user_folder,
-        exist_ok=True,
-    )
-
-    unique_file_name = f"{uuid4()}_{file.filename}"
-
-    file_path = os.path.join(
-        user_folder,
-        unique_file_name,
-    )
-
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(
-            file.file,
-            buffer,
-        )
-
-    document = Document(
-        user_id=user_id,
-        file_name=file.filename,
-        file_path=file_path,
-        status="uploaded",
-    )
-
-    db.add(document)
-    db.commit()
-    db.refresh(document)
-
-    return document
+router = APIRouter(
+    prefix="/documents",
+    tags=["Documents"],
+)
 
 
-def get_user_documents(
-    user_id: int,
-    db: Session,
+@router.post(
+    "/upload",
+    response_model=DocumentResponse,
+)
+def upload_document(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    return (
-        db.query(Document)
-        .filter(Document.user_id == user_id)
-        .order_by(Document.uploaded_at.desc())
-        .all()
+    return save_uploaded_pdf(
+        file=file,
+        user_id=current_user.id,
+        db=db,
     )
 
 
-def delete_user_document(
+@router.get(
+    "",
+    response_model=List[DocumentResponse],
+)
+def list_documents(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return get_user_documents(
+        user_id=current_user.id,
+        db=db,
+    )
+
+
+@router.delete("/{document_id}")
+def delete_document(
     document_id: int,
-    user_id: int,
-    db: Session,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    document = (
-        db.query(Document)
-        .filter(
-            Document.id == document_id,
-            Document.user_id == user_id,
-        )
-        .first()
+    return delete_user_document(
+        document_id=document_id,
+        user_id=current_user.id,
+        db=db,
     )
-
-    if document is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Document not found",
-        )
-
-    if os.path.exists(document.file_path):
-        os.remove(document.file_path)
-
-    db.delete(document)
-    db.commit()
-
-    return {
-        "message": "Document deleted successfully",
-    }
