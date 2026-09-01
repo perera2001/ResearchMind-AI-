@@ -21,3 +21,6 @@ pymupdf
 rank-bm25
 scikit-learn
 numpy
+email-validator
+passlib[bcrypt]
+bcrypt==4.0.1
