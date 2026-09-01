@@ -7,6 +7,10 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.documents.models import Document
+from app.rag.bm25_store import bm25_store
+from app.rag.chunker import create_semantic_chunks
+from app.rag.pdf_loader import load_pdf_pages
+from app.rag.vector_store import vector_store
 
 
 def save_uploaded_pdf(
@@ -47,10 +51,27 @@ def save_uploaded_pdf(
         user_id=user_id,
         file_name=file.filename,
         file_path=file_path,
-        status="uploaded",
+        status="processing",
     )
 
     db.add(document)
+    db.commit()
+    db.refresh(document)
+
+    pages = load_pdf_pages(file_path)
+
+    chunks = create_semantic_chunks(
+        pages=pages,
+        document_id=document.id,
+        user_id=user_id,
+        file_name=file.filename,
+    )
+
+    vector_store.add_chunks(chunks)
+    bm25_store.add_chunks(chunks)
+
+    document.status = "processed"
+
     db.commit()
     db.refresh(document)
 
