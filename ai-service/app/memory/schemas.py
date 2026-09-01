@@ -32,10 +32,8 @@ class ChatMessageResponse(BaseModel):
     session_id: int
     role: str
     content: str
+    sources: list[dict] | None = None
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class ChatSessionDetailResponse(BaseModel):

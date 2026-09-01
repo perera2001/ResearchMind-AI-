@@ -1,3 +1,4 @@
+import json
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -10,7 +11,6 @@ from app.graph.workflow import research_rag_graph
 from app.memory.conversation_memory import add_message, get_memory, set_memory
 from app.memory.models import ChatMessage, ChatSession
 from app.memory.schemas import (
-    ChatMessageResponse,
     ChatRequest,
     ChatResponse,
     ChatSessionDetailResponse,
@@ -33,6 +33,12 @@ def chat(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if not request.question.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Question cannot be empty",
+        )
+
     if request.session_id is None:
         session = ChatSession(
             user_id=current_user.id,
@@ -69,6 +75,7 @@ def chat(
             user_id=current_user.id,
             role="user",
             content=request.question,
+            sources=None,
         )
     )
 
@@ -115,7 +122,18 @@ def chat(
         "sources": [],
     }
 
-    result = research_rag_graph.invoke(initial_state)
+    try:
+        result = research_rag_graph.invoke(initial_state)
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Chat failed: {str(error)}",
+        )
+
+    sources_json = json.dumps(
+        result["sources"],
+    )
 
     db.add(
         ChatMessage(
@@ -123,6 +141,7 @@ def chat(
             user_id=current_user.id,
             role="assistant",
             content=result["answer"],
+            sources=sources_json,
         )
     )
 
@@ -158,14 +177,12 @@ def get_chat_sessions(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    sessions = (
+    return (
         db.query(ChatSession)
         .filter(ChatSession.user_id == current_user.id)
         .order_by(ChatSession.created_at.desc())
         .all()
     )
-
-    return sessions
 
 
 @router.get(
@@ -202,9 +219,30 @@ def get_chat_session_messages(
         .all()
     )
 
+    formatted_messages = []
+
+    for message in messages:
+        parsed_sources = None
+
+        if message.sources:
+            parsed_sources = json.loads(
+                message.sources,
+            )
+
+        formatted_messages.append(
+            {
+                "id": message.id,
+                "session_id": message.session_id,
+                "role": message.role,
+                "content": message.content,
+                "sources": parsed_sources,
+                "created_at": message.created_at,
+            }
+        )
+
     return {
         "session": session,
-        "messages": messages,
+        "messages": formatted_messages,
     }
 
 

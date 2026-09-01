@@ -16,6 +16,25 @@ class BM25Store:
                 }
             )
 
+        self._rebuild_index()
+
+    def delete_document_chunks(
+        self,
+        user_id: int,
+        document_id: int,
+    ):
+        self.documents = [
+            document
+            for document in self.documents
+            if not (
+                document["metadata"]["user_id"] == user_id
+                and document["metadata"]["document_id"] == document_id
+            )
+        ]
+
+        self._rebuild_index()
+
+    def _rebuild_index(self):
         self.tokenized_documents = [
             document["content"].lower().split()
             for document in self.documents
@@ -25,6 +44,8 @@ class BM25Store:
             self.bm25 = BM25Okapi(
                 self.tokenized_documents,
             )
+        else:
+            self.bm25 = None
 
     def search(
         self,

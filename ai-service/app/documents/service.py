@@ -24,6 +24,21 @@ def save_uploaded_pdf(
             detail="Only PDF files are allowed",
         )
 
+    existing_document = (
+        db.query(Document)
+        .filter(
+            Document.user_id == user_id,
+            Document.file_name == file.filename,
+        )
+        .first()
+    )
+
+    if existing_document:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This PDF is already uploaded",
+        )
+
     user_folder = os.path.join(
         settings.pdf_upload_path,
         str(user_id),
@@ -41,43 +56,65 @@ def save_uploaded_pdf(
         unique_file_name,
     )
 
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(
-            file.file,
-            buffer,
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(
+                file.file,
+                buffer,
+            )
+
+        document = Document(
+            user_id=user_id,
+            file_name=file.filename,
+            file_path=file_path,
+            status="processing",
         )
 
-    document = Document(
-        user_id=user_id,
-        file_name=file.filename,
-        file_path=file_path,
-        status="processing",
-    )
+        db.add(document)
+        db.commit()
+        db.refresh(document)
 
-    db.add(document)
-    db.commit()
-    db.refresh(document)
+        pages = load_pdf_pages(file_path)
 
-    pages = load_pdf_pages(file_path)
+        if not pages:
+            document.status = "failed"
+            db.commit()
 
-    chunks = create_semantic_chunks(
-        pages=pages,
-        document_id=document.id,
-        user_id=user_id,
-        file_name=file.filename,
-    )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Could not extract text from PDF",
+            )
 
-    vector_store.add_chunks(chunks)
-    bm25_store.add_chunks(chunks)
-    document.page_count=len(pages)
-    document.chunk_count=len(chunks)
+        chunks = create_semantic_chunks(
+            pages=pages,
+            document_id=document.id,
+            user_id=user_id,
+            file_name=file.filename,
+        )
 
-    document.status = "processed"
+        vector_store.add_chunks(chunks)
+        bm25_store.add_chunks(chunks)
 
-    db.commit()
-    db.refresh(document)
+        document.page_count = len(pages)
+        document.chunk_count = len(chunks)
+        document.status = "processed"
 
-    return document
+        db.commit()
+        db.refresh(document)
+
+        return document
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Document processing failed: {str(error)}",
+        )
 
 
 def get_user_documents(
@@ -111,6 +148,16 @@ def delete_user_document(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found",
         )
+
+    vector_store.delete_document_chunks(
+        user_id=user_id,
+        document_id=document_id,
+    )
+
+    bm25_store.delete_document_chunks(
+        user_id=user_id,
+        document_id=document_id,
+    )
 
     if os.path.exists(document.file_path):
         os.remove(document.file_path)

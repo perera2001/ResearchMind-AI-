@@ -93,12 +93,8 @@ class VectorStore:
         results = self.collection.get(
             where={
                 "$and": [
-                    {
-                        "user_id": user_id,
-                    },
-                    {
-                        "page_number": page_number,
-                    },
+                    {"user_id": user_id},
+                    {"page_number": page_number},
                 ]
             }
         )
@@ -121,6 +117,20 @@ class VectorStore:
             )
 
         return chunks
+
+    def delete_document_chunks(
+        self,
+        user_id: int,
+        document_id: int,
+    ):
+        self.collection.delete(
+            where={
+                "$and": [
+                    {"user_id": user_id},
+                    {"document_id": document_id},
+                ]
+            }
+        )
 
 
 vector_store = VectorStore()
