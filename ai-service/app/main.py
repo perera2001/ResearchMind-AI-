@@ -1,22 +1,11 @@
 from fastapi import FastAPI
 
-from app.auth.routes import router as auth_router
-from app.database import Base, engine
-from app.documents.routes import router as document_router
-from app.memory.routes import router as chat_router
+from app.internal.routes import router as internal_router
 
-import app.auth.models
-import app.documents.models
-import app.memory.models
-
-
-Base.metadata.create_all(
-    bind=engine,
-)
 
 app = FastAPI(
     title="ResearchMind AI Service",
-    version="1.0.0",
+    version="2.0.0",
 )
 
 
@@ -28,6 +17,4 @@ def health_check():
     }
 
 
-app.include_router(auth_router)
-app.include_router(document_router)
-app.include_router(chat_router)
+app.include_router(internal_router)

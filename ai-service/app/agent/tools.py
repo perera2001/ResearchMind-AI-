@@ -53,7 +53,10 @@ def search_research_papers(query: str, user_id: int) -> str:
         response.append(
             {
                 "content": document["content"],
-                "source": metadata["file_name"],
+                "source": metadata.get(
+                    "source",
+                    metadata.get("file_name"),
+                ),
                 "page_number": metadata["page_number"],
                 "document_id": metadata["document_id"],
                 "score": document["score"],

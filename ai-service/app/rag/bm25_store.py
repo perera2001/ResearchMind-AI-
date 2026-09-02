@@ -1,3 +1,4 @@
+from langchain_core.documents import Document
 from rank_bm25 import BM25Okapi
 
 
@@ -7,13 +8,13 @@ class BM25Store:
         self.tokenized_documents = []
         self.bm25 = None
 
-    def add_chunks(self, chunks: list[dict]):
+    def add_chunks(self, chunks: list[Document]):
         for chunk in chunks:
             self.documents.append(
-                {
-                    "content": chunk["content"],
-                    "metadata": chunk["metadata"],
-                }
+                Document(
+                    page_content=chunk.page_content,
+                    metadata=dict(chunk.metadata),
+                )
             )
 
         self._rebuild_index()
@@ -27,8 +28,8 @@ class BM25Store:
             document
             for document in self.documents
             if not (
-                document["metadata"]["user_id"] == user_id
-                and document["metadata"]["document_id"] == document_id
+                document.metadata["user_id"] == user_id
+                and document.metadata["document_id"] == document_id
             )
         ]
 
@@ -36,7 +37,7 @@ class BM25Store:
 
     def _rebuild_index(self):
         self.tokenized_documents = [
-            document["content"].lower().split()
+            document.page_content.lower().split()
             for document in self.documents
         ]
 
@@ -64,13 +65,13 @@ class BM25Store:
         for index, score in enumerate(scores):
             document = self.documents[index]
 
-            if document["metadata"]["user_id"] != user_id:
+            if document.metadata["user_id"] != user_id:
                 continue
 
             scored_documents.append(
                 {
-                    "content": document["content"],
-                    "metadata": document["metadata"],
+                    "content": document.page_content,
+                    "metadata": document.metadata,
                     "score": float(score),
                 }
             )

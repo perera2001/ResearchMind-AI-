@@ -3,6 +3,7 @@ import json
 from langchain_openai import ChatOpenAI
 
 from app.agent.schemas import (
+    AuthorExtraction,
     GroundednessGrade,
     RelevanceGrade,
     RouteDecision,
@@ -17,6 +18,43 @@ llm = ChatOpenAI(
     api_key=settings.openai_api_key,
     temperature=0,
 )
+
+
+def is_author_question(question: str) -> bool:
+    normalized_question = question.lower()
+
+    return (
+        "author" in normalized_question
+        or "authors" in normalized_question
+        or "who wrote" in normalized_question
+        or "written by" in normalized_question
+    )
+
+
+def build_unique_sources(documents: list[dict]) -> list[dict]:
+    sources = []
+    seen_sources = set()
+
+    for document in documents:
+        key = (
+            document["source"],
+            document["page_number"],
+            document["document_id"],
+        )
+
+        if key in seen_sources:
+            continue
+
+        seen_sources.add(key)
+        sources.append(
+            {
+                "source": document["source"],
+                "page_number": document["page_number"],
+                "document_id": document["document_id"],
+            }
+        )
+
+    return sources
 
 
 def route_question_node(state: dict) -> dict:
@@ -129,48 +167,48 @@ Return only the search query.
 
 
 def retrieve_documents_node(state: dict) -> dict:
-    question = state["question"].lower()
-
-    if (
-        "author" in question
-        or "authors" in question
-        or "who wrote" in question
-        or "written by" in question
-    ):
-        from app.database import SessionLocal
-        from app.documents.models import Document
+    if is_author_question(state["question"]):
         from app.rag.pdf_loader import load_single_pdf_page
+        from app.rag.vector_store import vector_store
 
-        db = SessionLocal()
+        document_metadatas = state.get("uploaded_documents", [])
 
-        try:
-            user_documents = (
-                db.query(Document)
-                .filter(Document.user_id == state["user_id"])
-                .all()
+        if not document_metadatas:
+            document_metadatas = vector_store.get_user_document_metadata(
+                user_id=state["user_id"],
             )
 
-            documents = []
+        documents = []
 
-            for user_document in user_documents:
+        for metadata in document_metadatas:
+            file_path = metadata.get("file_path")
+
+            if not file_path:
+                continue
+
+            try:
                 page_text = load_single_pdf_page(
-                    file_path=user_document.file_path,
+                    file_path=file_path,
                     page_number=1,
                 )
+            except (FileNotFoundError, RuntimeError, ValueError):
+                continue
 
-                if page_text.strip():
-                    documents.append(
-                        {
-                            "content": page_text,
-                            "source": user_document.file_name,
-                            "page_number": 1,
-                            "document_id": user_document.id,
-                            "score": 1.0,
-                        }
-                    )
+            if not page_text.strip():
+                continue
 
-        finally:
-            db.close()
+            documents.append(
+                {
+                    "content": page_text,
+                    "source": metadata.get(
+                        "source",
+                        metadata.get("file_name"),
+                    ),
+                    "page_number": 1,
+                    "document_id": metadata["document_id"],
+                    "score": 1.0,
+                }
+            )
 
     else:
         tool_result = search_research_papers.invoke(
@@ -199,37 +237,19 @@ def retrieve_documents_node(state: dict) -> dict:
         seen_documents.add(key)
         unique_documents.append(document)
 
-    unique_sources = []
-    seen_sources = set()
-
-    for document in unique_documents:
-        key = (
-            document["source"],
-            document["page_number"],
-            document["document_id"],
-        )
-
-        if key in seen_sources:
-            continue
-
-        seen_sources.add(key)
-
-        unique_sources.append(
-            {
-                "source": document["source"],
-                "page_number": document["page_number"],
-                "document_id": document["document_id"],
-            }
-        )
-
     return {
         "documents": unique_documents,
-        "sources": unique_sources,
+        "sources": build_unique_sources(unique_documents),
     }
 def grade_documents_node(state: dict) -> dict:
     if not state["documents"]:
         return {
             "documents_relevant": False,
+        }
+
+    if is_author_question(state["question"]):
+        return {
+            "documents_relevant": True,
         }
 
     context = "\n\n".join(
@@ -261,6 +281,55 @@ Documents:
 
 
 def generate_answer_node(state: dict) -> dict:
+    if is_author_question(state["question"]):
+        raw_first_pages = "\n\n".join(
+            [
+                (
+                    f'Source: {document["source"]}\n'
+                    f'{document["content"]}'
+                )
+                for document in state["documents"]
+            ]
+        )
+
+        structured_llm = llm.with_structured_output(
+            AuthorExtraction,
+        )
+
+        result = structured_llm.invoke(
+            f"""
+Extract every author name exactly as written in the raw first page text.
+
+Strict rules:
+- Use only the raw first page text below.
+- Find the author block between the paper title and the Abstract or Keywords section.
+- Include every author in that block and preserve their original order.
+- Preserve every initial exactly. Never shorten or remove initials.
+- Join parts of the same author name when they continue across line breaks.
+- Do not guess or correct names.
+- Do not include email addresses.
+- Do not include affiliations, departments, universities, degrees, or job titles.
+- Do not use chat history or any previous answer.
+- Return the authors only in the structured authors list.
+
+Raw first page text:
+{raw_first_pages}
+"""
+        )
+
+        if not result.authors:
+            return {
+                "answer": "I could not find enough evidence in your uploaded research papers to identify the authors.",
+                "documents": state["documents"],
+                "sources": [],
+            }
+
+        return {
+            "answer": f'The authors are: {", ".join(result.authors)}.',
+            "documents": state["documents"],
+            "sources": build_unique_sources(state["documents"]),
+        }
+
     answer, tool_documents = run_research_agent(
         question=state["question"],
         user_id=state["user_id"],
@@ -285,46 +354,24 @@ def generate_answer_node(state: dict) -> dict:
         seen_documents.add(key)
         documents.append(document)
 
-    sources = []
-    seen_sources = set()
-
-    for document in documents:
-        key = (
-            document["source"],
-            document["page_number"],
-            document["document_id"],
-        )
-
-        if key in seen_sources:
-            continue
-
-        seen_sources.add(key)
-        sources.append(
-            {
-                "source": document["source"],
-                "page_number": document["page_number"],
-                "document_id": document["document_id"],
-            }
-        )
-
     return {
         "answer": answer,
         "documents": documents,
-        "sources": sources,
+        "sources": build_unique_sources(documents),
     }
 def check_groundedness_node(state: dict) -> dict:
-    question = state["question"].lower()
-
-    if (
-        "author" in question
-        or "authors" in question
-        or "who wrote" in question
-        or "written by" in question
-    ):
-        if state["documents"] and state["answer"]:
+    if is_author_question(state["question"]):
+        if (
+            state["documents"]
+            and state["answer"].startswith("The authors are:")
+        ):
             return {
                 "grounded": True,
             }
+
+        return {
+            "grounded": False,
+        }
 
     if not state["documents"]:
         return {

@@ -14,3 +14,7 @@ class RelevanceGrade(BaseModel):
 class GroundednessGrade(BaseModel):
     grounded: bool
     reason: str
+
+
+class AuthorExtraction(BaseModel):
+    authors: list[str]

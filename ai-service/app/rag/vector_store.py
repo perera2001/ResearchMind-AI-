@@ -1,4 +1,5 @@
 import chromadb
+from langchain_core.documents import Document
 from langchain_openai import OpenAIEmbeddings
 
 from app.config import settings
@@ -19,29 +20,37 @@ class VectorStore:
             api_key=settings.openai_api_key,
         )
 
-    def add_chunks(self, chunks: list[dict]):
+    def add_chunks(self, chunks: list[Document]):
         if not chunks:
             return
 
-        ids = []
-        documents = []
-        metadatas = []
-        embeddings = []
+        texts = [
+            chunk.page_content
+            for chunk in chunks
+        ]
 
-        for chunk in chunks:
-            ids.append(chunk["id"])
-            documents.append(chunk["content"])
-            metadatas.append(chunk["metadata"])
+        metadatas = [
+            chunk.metadata
+            for chunk in chunks
+        ]
 
-            embedding = self.embeddings.embed_query(
-                chunk["content"],
+        ids = [
+            (
+                f'user_{chunk.metadata["user_id"]}'
+                f'_doc_{chunk.metadata["document_id"]}'
+                f'_page_{chunk.metadata["page_number"]}'
+                f'_chunk_{chunk.metadata["chunk_index"]}'
             )
+            for chunk in chunks
+        ]
 
-            embeddings.append(embedding)
+        embeddings = self.embeddings.embed_documents(
+            texts,
+        )
 
         self.collection.upsert(
             ids=ids,
-            documents=documents,
+            documents=texts,
             metadatas=metadatas,
             embeddings=embeddings,
         )
@@ -117,6 +126,34 @@ class VectorStore:
             )
 
         return chunks
+
+    def get_user_document_metadata(
+        self,
+        user_id: int,
+    ) -> list[dict]:
+        results = self.collection.get(
+            where={
+                "user_id": user_id,
+            },
+            include=["metadatas"],
+        )
+
+        unique_documents = []
+        seen_document_ids = set()
+
+        for metadata in results.get("metadatas", []):
+            if not metadata.get("file_path"):
+                continue
+
+            document_id = metadata["document_id"]
+
+            if document_id in seen_document_ids:
+                continue
+
+            seen_document_ids.add(document_id)
+            unique_documents.append(metadata)
+
+        return unique_documents
 
     def delete_document_chunks(
         self,

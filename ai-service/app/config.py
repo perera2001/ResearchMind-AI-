@@ -6,13 +6,6 @@ class Settings(BaseSettings):
     openai_model: str
     embedding_model: str
 
-    jwt_secret_key: str
-    jwt_algorithm: str
-    access_token_expire_minutes: int
-
-    database_url: str
-
-    pdf_upload_path: str
     chroma_db_path: str
 
     max_retry_count: int
@@ -20,6 +13,7 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 
 settings = Settings()

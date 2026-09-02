@@ -1,40 +1,47 @@
 import fitz
+from langchain_core.documents import Document
 
 
-def load_pdf_pages(file_path: str) -> list[dict]:
-    pdf_document = fitz.open(file_path)
-
+def load_pdf_pages(
+    file_path: str,
+    metadata_file_path: str,
+    user_id: int,
+    document_id: int,
+    file_name: str,
+) -> list[Document]:
     pages = []
 
-    for page_index, page in enumerate(pdf_document):
-        text = page.get_text()
+    with fitz.open(file_path) as pdf_document:
+        for page_index, page in enumerate(pdf_document):
+            text = page.get_text()
 
-        if text.strip():
             pages.append(
-                {
-                    "page_number": page_index + 1,
-                    "text": text,
-                }
+                Document(
+                    page_content=text,
+                    metadata={
+                        "user_id": user_id,
+                        "document_id": document_id,
+                        "source": file_name,
+                        "file_path": metadata_file_path,
+                        "page_number": page_index + 1,
+                    },
+                )
             )
 
-    pdf_document.close()
-
     return pages
+
+
 def load_single_pdf_page(
     file_path: str,
     page_number: int,
 ) -> str:
-    pdf_document = fitz.open(file_path)
+    with fitz.open(file_path) as pdf_document:
+        page_index = page_number - 1
 
-    page_index = page_number - 1
+        if page_index < 0 or page_index >= len(pdf_document):
+            return ""
 
-    if page_index < 0 or page_index >= len(pdf_document):
-        pdf_document.close()
-        return ""
-
-    page = pdf_document[page_index]
-    text = page.get_text()
-
-    pdf_document.close()
+        page = pdf_document[page_index]
+        text = page.get_text()
 
     return text
