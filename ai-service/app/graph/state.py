@@ -8,7 +8,7 @@ class ResearchRAGState(TypedDict):
     chat_history: list[dict]
     uploaded_documents: list[dict]
     retrieval_query: str
-    documents: list[dict]
+    documents: list[dict] 
     answer: str
     retry_count: int
     documents_relevant: bool
