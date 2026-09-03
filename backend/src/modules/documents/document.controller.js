@@ -16,18 +16,60 @@ function toPublicDocument(document) {
 
 async function upload(request, response, next) {
     try {
-        if (!request.file) {
+        const legacyFile = request.files?.file?.[0];
+        const batchFiles = request.files?.files || [];
+
+        if (legacyFile && batchFiles.length) {
+            throw new ApiError(
+                400,
+                "Use either file or files, not both",
+            );
+        }
+
+        const files = legacyFile
+            ? [legacyFile]
+            : batchFiles;
+
+        if (!files.length) {
             throw new ApiError(400, "PDF file is required");
         }
 
-        const document = await documentService.uploadDocument(
-            request.file,
-            request.user.id,
-        );
+        const documents = [];
+        const errors = [];
 
-        return response.status(201).json(
-            toPublicDocument(document),
-        );
+        for (const file of files) {
+            try {
+                const document = await documentService.uploadDocument(
+                    file,
+                    request.user.id,
+                );
+                documents.push(toPublicDocument(document));
+            } catch (error) {
+                errors.push({
+                    file_name: file.originalname,
+                    status: error.statusCode || 500,
+                    message: error.statusCode
+                        ? error.message
+                        : "PDF upload failed",
+                });
+            }
+        }
+
+        if (legacyFile) {
+            if (errors.length) {
+                throw new ApiError(
+                    errors[0].status,
+                    errors[0].message,
+                );
+            }
+
+            return response.status(201).json(documents[0]);
+        }
+
+        return response.status(errors.length ? 207 : 201).json({
+            documents,
+            errors,
+        });
     } catch (error) {
         return next(error);
     }

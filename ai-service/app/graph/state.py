@@ -7,6 +7,7 @@ class ResearchRAGState(TypedDict):
     question: str
     chat_history: list[dict]
     uploaded_documents: list[dict]
+    selected_document_ids: list[int] | None
     retrieval_query: str
     documents: list[dict] 
     answer: str

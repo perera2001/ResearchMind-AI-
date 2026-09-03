@@ -6,6 +6,7 @@ async function chat(request, response, next) {
     try {
         const question = request.body.question?.trim();
         const sessionId = request.body.session_id ?? null;
+        const documentIds = request.body.document_ids ?? null;
 
         if (!question) {
             throw new ApiError(400, "Question is required");
@@ -18,10 +19,29 @@ async function chat(request, response, next) {
             throw new ApiError(400, "Invalid session ID");
         }
 
+        if (
+            documentIds !== null
+            && (
+                !Array.isArray(documentIds)
+                || !documentIds.length
+                || documentIds.some(
+                    (id) => !Number.isInteger(id) || id < 1,
+                )
+            )
+        ) {
+            throw new ApiError(
+                400,
+                "document_ids must be a non-empty array of valid IDs",
+            );
+        }
+
         const result = await chatService.sendMessage(
             question,
             sessionId,
             request.user.id,
+            documentIds === null
+                ? null
+                : [...new Set(documentIds)],
         );
 
         return response.json(result);

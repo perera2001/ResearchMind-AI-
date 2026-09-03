@@ -215,6 +215,7 @@ def retrieve_documents_node(state: dict) -> dict:
             {
                 "query": state["retrieval_query"],
                 "user_id": state["user_id"],
+                "document_ids": state.get("selected_document_ids"),
             }
         )
 
@@ -335,6 +336,7 @@ Raw first page text:
         user_id=state["user_id"],
         chat_history=state["chat_history"],
         documents=state["documents"],
+        document_ids=state.get("selected_document_ids"),
     )
 
     documents = []

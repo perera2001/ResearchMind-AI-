@@ -60,10 +60,21 @@ class VectorStore:
         query: str,
         user_id: int,
         top_k: int,
+        document_ids: list[int] | None = None,
     ) -> list[dict]:
         query_embedding = self.embeddings.embed_query(
             query,
         )
+
+        where = {"user_id": user_id}
+
+        if document_ids:
+            where = {
+                "$and": [
+                    {"user_id": user_id},
+                    {"document_id": {"$in": document_ids}},
+                ]
+            }
 
         results = self.collection.query(
             query_embeddings=[query_embedding],
@@ -132,9 +143,7 @@ class VectorStore:
         user_id: int,
     ) -> list[dict]:
         results = self.collection.get(
-            where={
-                "user_id": user_id,
-            },
+            where=where,
             include=["metadatas"],
         )
 

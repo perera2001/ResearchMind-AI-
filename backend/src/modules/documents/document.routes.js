@@ -31,7 +31,10 @@ router.use(authenticate);
 
 router.post(
     "/upload",
-    upload.single("file"),
+    upload.fields([
+        { name: "file", maxCount: 1 },
+        { name: "files", maxCount: 10 },
+    ]),
     documentController.upload,
 );
 router.get("/", documentController.list);

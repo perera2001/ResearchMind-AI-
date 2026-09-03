@@ -6,17 +6,23 @@ from app.rag.vector_store import vector_store
 def hybrid_search(
     query: str,
     user_id: int,
+    document_ids: list[int] | None = None,
 ) -> list[dict]:
+    if document_ids == []:
+        return []
+
     vector_results = vector_store.search(
         query=query,
         user_id=user_id,
         top_k=settings.retrieval_top_k,
+        document_ids=document_ids,
     )
 
     bm25_results = bm25_store.search(
         query=query,
         user_id=user_id,
         top_k=settings.retrieval_top_k,
+        document_ids=document_ids,
     )
 
     merged = {}

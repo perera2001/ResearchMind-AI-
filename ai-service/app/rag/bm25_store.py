@@ -53,6 +53,7 @@ class BM25Store:
         query: str,
         user_id: int,
         top_k: int,
+        document_ids: list[int] | None = None,
     ) -> list[dict]:
         if self.bm25 is None:
             return []
@@ -66,6 +67,12 @@ class BM25Store:
             document = self.documents[index]
 
             if document.metadata["user_id"] != user_id:
+                continue
+
+            if (
+                document_ids
+                and document.metadata["document_id"] not in document_ids
+            ):
                 continue
 
             scored_documents.append(

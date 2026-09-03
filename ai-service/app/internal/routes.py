@@ -78,6 +78,10 @@ def chat(request: InternalChatRequest):
         "question": request.question,
         "chat_history": request.chat_history,
         "uploaded_documents": request.documents,
+        "selected_document_ids": [
+            document["document_id"]
+            for document in request.documents
+        ],
         "retrieval_query": request.question,
         "documents": [],
         "answer": "",

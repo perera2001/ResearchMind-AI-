@@ -4,7 +4,11 @@ from langchain.agents import create_agent
 from langchain_core.messages import ToolMessage
 from langchain_openai import ChatOpenAI
 
-from app.agent.tools import search_research_papers
+from app.agent.tools import (
+    search_research_papers,
+    selected_document_ids_context,
+    selected_user_id_context,
+)
 from app.config import settings
 
 
@@ -40,6 +44,7 @@ def run_research_agent(
     user_id: int,
     chat_history: list[dict],
     documents: list[dict],
+    document_ids: list[int] | None = None,
 ) -> tuple[str, list[dict]]:
     chat_history_text = "\n".join(
         [
@@ -60,13 +65,18 @@ def run_research_agent(
         ]
     )
 
-    result = research_agent.invoke(
-        {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": f"""
+    context_token = selected_document_ids_context.set(document_ids)
+    user_context_token = selected_user_id_context.set(user_id)
+
+    try:
+        result = research_agent.invoke(
+            {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": f"""
 User ID for tool calls: {user_id}
+Allowed document IDs for tool calls: {document_ids}
 
 Chat history is only for understanding follow-up questions:
 {chat_history_text}
@@ -77,10 +87,13 @@ Current question:
 Already retrieved research-paper context:
 {context}
 """,
-                }
-            ]
-        }
-    )
+                    }
+                ]
+            }
+        )
+    finally:
+        selected_document_ids_context.reset(context_token)
+        selected_user_id_context.reset(user_context_token)
 
     tool_documents = []
 

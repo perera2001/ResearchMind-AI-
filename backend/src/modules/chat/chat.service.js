@@ -33,7 +33,10 @@ async function getHistory(sessionId, userId) {
 }
 
 
-async function getUserDocuments(userId) {
+async function getUserDocuments(userId, documentIds = null) {
+    const selectedClause = documentIds
+        ? `AND id IN (${documentIds.map(() => "?").join(", ")})`
+        : "";
     const [rows] = await db.execute(
         `
         SELECT
@@ -42,16 +45,29 @@ async function getUserDocuments(userId) {
             file_path
         FROM documents
         WHERE user_id = ? AND status = 'processed'
+        ${selectedClause}
         ORDER BY uploaded_at ASC, id ASC
         `,
-        [userId],
+        [userId, ...(documentIds || [])],
     );
+
+    if (documentIds && rows.length !== documentIds.length) {
+        throw new ApiError(
+            400,
+            "One or more selected documents are unavailable",
+        );
+    }
 
     return rows;
 }
 
 
-async function sendMessage(question, sessionId, userId) {
+async function sendMessage(
+    question,
+    sessionId,
+    userId,
+    documentIds = null,
+) {
     let currentSessionId = sessionId;
 
     if (currentSessionId === null) {
@@ -76,7 +92,7 @@ async function sendMessage(question, sessionId, userId) {
         currentSessionId,
         userId,
     );
-    const documents = await getUserDocuments(userId);
+    const documents = await getUserDocuments(userId, documentIds);
 
     await db.execute(
         `

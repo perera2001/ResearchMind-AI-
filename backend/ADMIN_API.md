@@ -69,6 +69,41 @@ Use `Authorization: Bearer {{adminToken}}` with the existing requests:
 These routes continue to use the JWT user ID, so the admin sees only the
 admin's own PDFs, vector chunks, messages, and sessions.
 
+## Multiple PDF upload and selection
+
+For a batch upload, send `POST /api/documents/upload` as `multipart/form-data`
+with the field name `files` repeated for each PDF (maximum 10 files and 25 MB
+per file). A successful batch returns `201`:
+
+```json
+{
+  "documents": [
+    {"id": 1, "file_name": "one.pdf", "status": "processed"},
+    {"id": 2, "file_name": "two.pdf", "status": "processed"}
+  ],
+  "errors": []
+}
+```
+
+A partially successful batch returns `207` with successful documents and an
+`errors` entry for each failed file. Existing clients may continue sending one
+PDF under the singular `file` field and receive the original single-document
+response.
+
+To ask against selected PDFs, include their IDs in the existing chat request:
+
+```json
+{
+  "question": "Compare the methods in these papers",
+  "session_id": null,
+  "document_ids": [1, 2, 3]
+}
+```
+
+When `document_ids` is omitted, chat searches all of the user's processed
+documents for backward compatibility. Selected IDs must belong to the logged-in
+user and be processed; otherwise the API returns `400`.
+
 ## Data flow
 
 The startup seed hashes the configured password and stores the admin as a normal
