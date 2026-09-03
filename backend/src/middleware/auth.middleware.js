@@ -21,7 +21,12 @@ function authenticate(request, response, next) {
         request.user = {
             id: Number(payload.user_id),
             email: payload.email,
+            role: payload.role,
         };
+
+        if (!Number.isInteger(request.user.id) || request.user.id < 1) {
+            throw new Error("Invalid token payload");
+        }
 
         return next();
     } catch (error) {

@@ -7,7 +7,7 @@ const db = require("../../config/db");
 async function findUserByEmail(email) {
     const [rows] = await db.execute(
         `
-        SELECT id, name, email, password, created_at
+        SELECT id, name, email, password, role, created_at
         FROM users
         WHERE email = ?
         LIMIT 1
@@ -22,7 +22,7 @@ async function findUserByEmail(email) {
 async function findUserById(userId) {
     const [rows] = await db.execute(
         `
-        SELECT id, name, email, created_at
+        SELECT id, name, email, role, created_at
         FROM users
         WHERE id = ?
         LIMIT 1
@@ -39,8 +39,8 @@ async function createUser(name, email, password) {
 
     const [result] = await db.execute(
         `
-        INSERT INTO users (name, email, password)
-        VALUES (?, ?, ?)
+        INSERT INTO users (name, email, password, role)
+        VALUES (?, ?, ?, 'user')
         `,
         [name, email, passwordHash],
     );
@@ -54,6 +54,7 @@ function createToken(user) {
         {
             user_id: user.id,
             email: user.email,
+            role: user.role,
         },
         process.env.JWT_SECRET,
         {
