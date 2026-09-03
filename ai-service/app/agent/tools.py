@@ -1,0 +1,91 @@
+import json
+from contextvars import ContextVar
+
+from langchain.tools import tool
+
+from app.rag.compressor import compress_documents
+from app.rag.hybrid_retriever import hybrid_search
+from app.rag.multi_query import generate_search_queries
+
+
+selected_document_ids_context = ContextVar(
+    "selected_document_ids",
+    default=None,
+)
+selected_user_id_context = ContextVar(
+    "selected_user_id",
+    default=None,
+)
+
+
+@tool
+def search_research_papers(
+    query: str,
+    user_id: int,
+    document_ids: list[int] | None = None,
+) -> str:
+    """
+    Search uploaded research papers using multi-query hybrid retrieval.
+    """
+
+    scoped_document_ids = selected_document_ids_context.get()
+    scoped_user_id = selected_user_id_context.get()
+
+    if scoped_document_ids is not None:
+        document_ids = scoped_document_ids
+
+    if scoped_user_id is not None:
+        user_id = scoped_user_id
+
+    queries = generate_search_queries(query)
+
+    all_results = {}
+
+    for search_query in queries:
+        results = hybrid_search(
+            query=search_query,
+            user_id=user_id,
+            document_ids=document_ids,
+        )
+
+        for result in results:
+            key = (
+                result["metadata"]["document_id"],
+                result["metadata"]["page_number"],
+                result["content"][:100],
+            )
+
+            if key not in all_results:
+                all_results[key] = result
+
+    documents = list(all_results.values())
+
+    documents.sort(
+        key=lambda item: item["score"],
+        reverse=True,
+    )
+
+    compressed_documents = compress_documents(
+        question=query,
+        documents=documents,
+    )
+
+    response = []
+
+    for document in compressed_documents:
+        metadata = document["metadata"]
+
+        response.append(
+            {
+                "content": document["content"],
+                "source": metadata.get(
+                    "source",
+                    metadata.get("file_name"),
+                ),
+                "page_number": metadata["page_number"],
+                "document_id": metadata["document_id"],
+                "score": document["score"],
+            }
+        )
+
+    return json.dumps(response)

@@ -5,11 +5,6 @@ pydantic
 pydantic-settings
 python-multipart
 
-sqlalchemy
-pymysql
-passlib[bcrypt]
-python-jose[cryptography]
-
 langchain
 langchain-openai
 langchain-community
@@ -21,3 +16,4 @@ pymupdf
 rank-bm25
 scikit-learn
 numpy
+langchain-experimental
