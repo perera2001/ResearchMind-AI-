@@ -73,9 +73,9 @@ async function startServer() {
         await db.query("SELECT 1");
         await ensureAdminUser();
 
-        app.listen(port, "127.0.0.1", () => {
+        app.listen(port, "0.0.0.0", () => {
             console.log(
-                `ResearchMind backend running at http://127.0.0.1:${port}`,
+                `ResearchMind backend running on port ${port}`,
             );
         });
     } catch (error) {
