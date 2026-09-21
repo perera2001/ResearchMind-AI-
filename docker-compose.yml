@@ -1,0 +1,91 @@
+services:
+  ai-service:
+    build:
+      context: ./ai-service
+    image: researchmind-ai
+    container_name: researchmind-ai
+    env_file:
+      - ./ai-service/.env
+    environment:
+      CHROMA_DB_PATH: /app/data/chroma_db
+      PDF_UPLOAD_PATH: /app/data/papers
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ai-service:/app
+      - ./backend/data/papers:/app/data/papers
+    networks:
+      - researchmind-network
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  backend:
+    build:
+      context: ./backend
+    image: researchmind-backend
+    container_name: researchmind-backend
+    env_file:
+      - ./backend/.env
+    environment:
+      DB_HOST: host.docker.internal
+      PDF_UPLOAD_PATH: /app/data/papers
+      PYTHON_AI_SERVICE_URL: http://ai-service:8000
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend:/app
+      - backend-node-modules:/app/node_modules
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - researchmind-network
+    depends_on:
+      ai-service:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:5000/health').then(response => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+    image: researchmind-frontend
+    container_name: researchmind-frontend
+    env_file:
+      - ./frontend/.env
+    environment:
+      VITE_API_BASE_URL: http://localhost:5000/api
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+    networks:
+      - researchmind-network
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  backend-node-modules:
+  frontend-node-modules:
+
+networks:
+  researchmind-network:
+    external: true
+    name: researchmind-network
