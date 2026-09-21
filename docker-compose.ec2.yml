@@ -1,0 +1,115 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-advanced_agentic_rag_db}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./database/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mysqladmin ping -h 127.0.0.1 -u"$${MYSQL_USER}" -p"$${MYSQL_PASSWORD}" --silent
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  ai-service:
+    build:
+      context: ./ai-service
+    image: researchmind-ai
+    restart: unless-stopped
+    env_file:
+      - path: ./ai-service/.env.ec2
+        required: false
+    environment:
+      CHROMA_DB_PATH: /app/data/chroma_db
+      PDF_UPLOAD_PATH: /app/data/papers
+    command:
+      - uvicorn
+      - app.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    volumes:
+      - chroma-data:/app/data/chroma_db
+      - uploaded-pdfs:/app/data/papers
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  backend:
+    build:
+      context: ./backend
+    image: researchmind-backend
+    restart: unless-stopped
+    env_file:
+      - path: ./backend/.env.ec2
+        required: false
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_DATABASE:-advanced_agentic_rag_db}
+      DB_USER: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      PDF_UPLOAD_PATH: /app/data/papers
+      PYTHON_AI_SERVICE_URL: http://ai-service:8000
+    command:
+      - npm
+      - start
+    volumes:
+      - uploaded-pdfs:/app/data/papers
+    depends_on:
+      mysql:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:5000/health').then(response => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  frontend:
+    build:
+      context: ./frontend
+    image: researchmind-frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_BASE_URL: /api
+      VITE_PROXY_TARGET: http://backend:5000
+    ports:
+      - "5173:5173"
+    command:
+      - npm
+      - run
+      - dev
+      - --
+      - --host
+      - 0.0.0.0
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  mysql-data:
+  chroma-data:
+  uploaded-pdfs:
